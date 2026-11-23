@@ -230,8 +230,10 @@ function aiConf() {
   if (e.GROQ_API_KEY) return { name: 'groq', key: e.GROQ_API_KEY, model: e.AI_MODEL || 'llama-3.3-70b-versatile', url: e.GROQ_URL || 'https://api.groq.com/openai/v1/chat/completions' };
   if (e.OPENROUTER_API_KEY) return { name: 'openrouter', key: e.OPENROUTER_API_KEY, model: e.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct:free', url: e.OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions' };
   if (e.ANTHROPIC_API_KEY) return { name: 'anthropic', key: e.ANTHROPIC_API_KEY, model: e.AI_MODEL || 'claude-haiku-4-5' };
-  return null;
+  if (Date.now() < freeOffUntil) return null;
+  return { name: 'free', key: '', model: e.FREE_AI_MODEL || 'openai', url: e.POLL_URL || 'https://text.pollinations.ai/openai' };
 }
+let freeFails = 0, freeOffUntil = 0;
 async function aiChat(prompt) {
   const c = aiConf(); if (!c) return { error: 'no_key' };
   prompt = String(prompt || '').slice(0, 30000);
@@ -245,13 +247,15 @@ async function aiChat(prompt) {
     body = { model: c.model, max_tokens: 2200, temperature: 0.85, messages: [{ role: 'user', content: prompt }] };
     pick = j => j.content && j.content[0] && j.content[0].text;
   } else {
-    url = c.url; headers.authorization = 'Bearer ' + c.key;
+    url = c.url; if (c.key) headers.authorization = 'Bearer ' + c.key;
     body = { model: c.model, messages: [{ role: 'user', content: prompt }], temperature: 0.85, max_tokens: 2200 };
     pick = j => j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
   }
-  const raw = await get(url, 28000, { method: 'POST', body: JSON.stringify(body), headers });
-  let j; try { j = JSON.parse(raw); } catch (e) { return { error: 'provider' }; }
-  const text = pick(j); return text ? { text: String(text) } : { error: 'empty' };
+  const raw = await get(url, c.name === 'free' ? 15000 : 28000, { method: 'POST', body: JSON.stringify(body), headers });
+  let j; try { j = JSON.parse(raw); } catch (e) { if (c.name === 'free' && ++freeFails >= 2) { freeOffUntil = Date.now() + 5 * 60000; freeFails = 0; } return { error: 'provider' }; }
+  const text = pick(j);
+  if (c.name === 'free') { if (text) freeFails = 0; else if (++freeFails >= 2) { freeOffUntil = Date.now() + 5 * 60000; freeFails = 0; } }
+  return text ? { text: String(text) } : { error: 'empty' };
 }
 
 /* ---------- http ---------- */

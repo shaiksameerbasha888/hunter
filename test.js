@@ -47,6 +47,9 @@ mock.listen(0, async () => {
   process.env.GROQ_API_KEY = 'k'; process.env.GROQ_URL = `http://127.0.0.1:${port}/v1chat`;
   assert(s.aiConf().name === 'groq');
   const a = await s.aiChat('hello'); console.log('ai:', JSON.stringify(a)); assert(a.text === 'Hi, I am Sam.');
-  delete process.env.GROQ_API_KEY; assert((await s.aiChat('x')).error === 'no_key');
+  delete process.env.GROQ_API_KEY; process.env.POLL_URL = `http://127.0.0.1:${port}/v1chat`;
+  assert(s.aiConf().name === 'free'); assert((await s.aiChat('x')).text === 'Hi, I am Sam.');
+  process.env.POLL_URL = `http://127.0.0.1:${port}/none`; await s.aiChat('x'); await s.aiChat('x');
+  assert(s.aiConf() === null, 'circuit breaker opens after repeated failures');
   console.log('ALL TESTS PASSED'); process.exit(0);
 });
