@@ -1808,8 +1808,8 @@ var AGK='fti_agm';
 function agMem(){var m=null;try{m=JSON.parse(localStorage.getItem(AGK)||'null')}catch(e){}m=m||{};m.sam=m.sam||{n:0,mist:{},topics:{},seen:[],facts:[]};m.int=m.int||{n:0,hist:[],weak:{},qseen:[]};return m}
 function agMemSave(m){try{localStorage.setItem(AGK,JSON.stringify(m))}catch(e){}}
 function agMemHtml(){var m=agMem(),s=m.sam,t=m.int,has=s.n||t.n;return '<section class="panel"><h2>What your agents remember</h2><p class="muted sp">'+(has?'Sam: '+s.n+' chats, '+Object.keys(s.mist).length+' recurring mistake types'+(s.facts.length?', '+s.facts.length+' facts about you':'')+'. Sony: '+t.n+' interviews'+(t.hist.length?', last score '+t.hist[t.hist.length-1].score+'/10':'')+'. They use this to personalise the next session.':'Nothing yet. After each session they remember your mistakes, goals and weak areas, and use them next time.')+'</p>'+(has?'<button class="pill" data-ag="clearmem">Clear memory</button>':'')+'</section>'}
-function agEng(){return '<div class="field"><label>Brain</label><div class="chips"><button class="pill'+(AG.engine!=='local'?' on':'')+'" data-ag="eng" data-k="auto">Auto (Claude when available)</button><button class="pill'+(AG.engine==='local'?' on':'')+'" data-ag="eng" data-k="local">Built-in brain only</button></div></div>'}
-function agUseClaude(){return AG.engine!=='local'&&!AG.noClaude&&!!(window.claude&&window.claude.use)}
+function agEng(){return '<div class="field"><label>Brain</label><p class="muted">Live web search + built-in logic. No AI service is used.</p></div>'}
+function agUseClaude(){return false&&AG.engine!=='local'&&!AG.noClaude&&!!(window.claude&&window.claude.use)}
 function agEc(s){return s.replace(/\s+(very much|a lot|so much|too|also)$/i,'').trim()}
 function rnd(a){return a[Math.floor(Math.random()*a.length)]}
 function agWc(t){return (String(t).trim().match(/\S+/g)||[]).length}
