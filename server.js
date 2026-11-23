@@ -124,7 +124,8 @@ function extractQA(html, src) {
 }
 
 /* ---------- job-description understanding ---------- */
-const SKILLS = ['sql', 'power bi', 'python', 'excel', 'tableau', 'statistics', 'etl', 'payroll', 'mis', 'reporting', 'dashboard', 'pandas', 'dax', 'data cleaning', 'a/b testing', 'machine learning', 'vlookup', 'pivot', 'stakeholder', 'data warehouse', 'looker', 'r programming', 'power query', 'data visualization', 'business intelligence', 'forecasting', 'kpi', 'compliance', 'sap', 'oracle', 'mysql', 'postgresql', 'snowflake', 'azure', 'aws', 'spark'];
+const SKILLS = ['sql', 'power bi', 'python', 'excel', 'tableau', 'statistics', 'etl', 'payroll', 'mis', 'reporting', 'dashboard', 'pandas', 'dax', 'data cleaning', 'a/b testing', 'machine learning', 'vlookup', 'pivot', 'stakeholder', 'data warehouse', 'looker', 'r programming', 'power query', 'data visualization', 'business intelligence', 'forecasting', 'kpi', 'compliance', 'sap', 'oracle', 'mysql', 'postgresql', 'snowflake', 'azure', 'aws', 'spark', 'javascript', 'typescript', 'react', 'angular', 'vue', 'node.js', 'express', 'java', 'spring boot', 'django', 'flask', 'docker', 'kubernetes', 'mongodb', 'redis', 'rest api', 'graphql', 'git', 'ci/cd', 'selenium', 'flutter', 'kotlin', 'terraform', 'kafka', 'microservices', 'html', 'css'];
+const isDataRole = (role, jd) => { const t = ((role || '') || (jd || '')).toLowerCase(); return !t.trim() || (/analyst|analytics|\bbi\b|\bmis\b|reporting|payroll|power ?bi|tableau|data entry/.test(t) && !/developer|engineer|scientist|machine/.test(t)); };
 function jdSkills(role, jd) {
   const t = (role + ' ' + jd).toLowerCase(), hits = [];
   SKILLS.forEach(s => { const n = t.split(s).length - 1; if (n) hits.push([s, n]); });
@@ -161,7 +162,7 @@ async function researchInt(p, state) {
   const res = await Promise.all(queries.map(q => search(q)));
   let urls = []; res.forEach(r => r.slice(0, 3).forEach(x => { if (!urls.includes(x.url)) urls.push(x.url); }));
   urls = urls.slice(0, 7);
-  const seeds = []; (skills.slice(0, 2).concat(['gen'])).forEach(s => (SEEDS[cat(s) === 'gen' && s !== 'gen' ? 'gen' : cat(s)] || SEEDS[s] || []).forEach(u => { if (!urls.includes(u) && !seeds.includes(u)) seeds.push(u); }));
+  const seeds = []; if (isDataRole(role, jd)) (skills.slice(0, 2).concat(['gen'])).forEach(s => (SEEDS[cat(s) === 'gen' && s !== 'gen' ? 'gen' : cat(s)] || SEEDS[s] || []).forEach(u => { if (!urls.includes(u) && !seeds.includes(u)) seeds.push(u); }));
   const todo = urls.concat(urls.length < 4 ? seeds.slice(0, 3) : []);
   await Promise.all(todo.map(async u => {
     const h = await get(u, 2300); if (!h) return;
