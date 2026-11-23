@@ -1629,7 +1629,7 @@ document.addEventListener('input',function(e){var t=e.target;if(t&&t.id==='prdra
 var prcss=document.createElement('style');prcss.textContent='.pbar{height:6px;background:var(--line);border-radius:4px;margin:8px 0;overflow:hidden}.pbar i{display:block;height:100%;background:var(--brand)}.prq p{font:600 16px/1.5 var(--body);margin:8px 0}.pans{background:var(--learn-bg);border-radius:14px;padding:10px 12px;margin:10px 0}.pans b{color:var(--learn-fg)}#prdraft{width:100%;box-sizing:border-box;margin:8px 0;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg);color:var(--ink);font:inherit}.prow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.pdots{display:inline-flex;gap:5px;vertical-align:middle}.pdots span{width:10px;height:10px;border-radius:50%;background:var(--line);display:inline-block}.pdots .g{background:var(--meal-fg)}.pdots .n{background:var(--fit-fg)}';document.head.appendChild(prcss);
 
 /* ===== Agents: Sam (English partner) and Sony (interviewer), reports as PDF ===== */
-var AG={engine:'auto',vn:{sam:'',int:''},rate:1,view:'home',agent:null,msgs:[],log:[],busy:false,role:'',jd:'',max:8,topic:'everyday life',voice:true,report:null,err:'',q:0,base:''};
+var AG={engine:(function(){try{return localStorage.getItem('fti-eng')||'srv'}catch(e){return 'srv'}})(),vn:{sam:'',int:''},rate:1,view:'home',agent:null,msgs:[],log:[],busy:false,role:'',jd:'',max:8,topic:'everyday life',voice:true,report:null,err:'',q:0,base:''};
 var AG_S=null,AG_D=null,AG_AB=null,AG_Q=0;
 function agNm(){return (S&&S.name)||'Sameer'}
 function agT(s){return String(s==null?'':s).replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/[\u2013\u2014]/g,'-').replace(/\u2026/g,'...').replace(/[^\x20-\x7E\n]/g,'')}
@@ -1663,7 +1663,8 @@ document.addEventListener('pointermove',function(e){if(e.pointerType==='touch'){
 document.addEventListener('pointerleave',off,true);window.addEventListener('blur',off)})();
 
 function agErr(e){var c=e&&e.code;return c==='none'?'The AI brain is not connected.':c==='rate_limited'?'Too many requests. Wait a minute, then press Send again.':c==='aborted'||c==='abort'?'':'Something went wrong. Please press Send again.'}
-async function agModel(prompt,onText){
+async function agModel(prompt,onText,o){
+  if(AG.engine==='dev'&&DEV.ready)return agDevModel(prompt,onText,o);
   if(!AG_SRV)throw {code:'none'};
   AG_AB=new AbortController();var tm=setTimeout(function(){try{AG_AB.abort()}catch(e){}},32000);
   try{var r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json'},signal:AG_AB.signal,body:JSON.stringify({prompt:prompt})}),j=await r.json();
@@ -1683,8 +1684,8 @@ async function agTurn(first){
     var hint=first?'Begin now: greet briefly'+(sam?'':', say your name and the role')+' and ask your first question.':(sam?'Reply to his last message now.':(AG.q>=AG.max?'The candidate has now answered all planned questions. Close the interview politely in one short sentence and end your message with [END].':'Question count so far: '+AG.q+' of '+AG.max+'. Ask the next question or a follow-up now.'));
     var prompt=agSys()+'\n\nConversation so far:\n'+(AG.msgs.length?agTranscript():'(none yet)')+'\n\n'+hint;
     var txt;
-    if(sam){txt=await agModel(prompt);var j=agParse(txt);ai.t=(j&&j.reply)||txt;ai.fix=j&&j.note&&j.note.said?j.note:null;ai.note=null}
-    else{AG.msgs.push(ai);txt=await agModel(prompt,function(x){ai.t=x.text.replace('[END]','');agPaint()});ai.t=txt.replace('[END]','').trim()}
+    if(sam){txt=await agModel(prompt,null,{json:1,max:380});var j=agParse(txt);ai.t=(j&&j.reply)||agStripJ(txt);ai.fix=j&&j.note&&j.note.said?j.note:null;ai.note=null}
+    else{AG.msgs.push(ai);txt=await agModel(prompt,function(x){ai.t=x.text.replace('[END]','');agPaint()},{max:260});ai.t=txt.replace('[END]','').trim()}
     if(sam)AG.msgs.push(ai);
     AG.busy=false;agPaint();agSay(ai.t);
     if(sam&&!first){var u=AG.msgs[AG.msgs.length-2];if(u)AG.log.push({you:u.t,fix:ai.fix||null})}
@@ -1703,7 +1704,7 @@ async function agFinish(){
   AG.view='scoring';render(false);var sam=AG.agent==='sam',tr=agTranscript(),p;
   if(sam)p='Below is a friendly English conversation between Sam and '+agNm()+', an Indian learner preparing for job interviews. Review only what '+agNm()+' said. Respond with ONLY one JSON object: {"score":0-10,"dims":{"fluency":0-10,"grammar":0-10,"vocabulary":0-10,"confidence":0-10,"naturalness":0-10},"summary":"2 warm, honest sentences","strengths":["3 specific strengths"],"improve":["3 specific things to improve"],"mistakes":[{"said":"exact words he said","better":"natural way to say it","why":"short reason"}],"phrases":[{"phrase":"a natural phrase he should learn","meaning":"short meaning","example":"one example sentence"}],"advice":"3 encouraging sentences of advice","tomorrow":"one concrete speaking task for tomorrow"} Give up to 8 mistakes (real ones only) and exactly 5 phrases.\n\nConversation:\n'+tr;
   else p='Below is a job interview. Role: '+(AG.role||'Data Analyst (fresher)')+'.'+(AG.jd?' Job description:\n'+AG.jd.slice(0,3500):'')+'\nAct as the hiring manager writing the scorecard for the candidate '+agNm()+'. Be honest and specific, quote real things the candidate said. Respond with ONLY one JSON object: {"score":0-10,"verdict":"one of: Not ready yet, Almost ready, Interview ready, Strong hire","hire":"one sentence hiring decision","summary":"2 to 3 sentences","dims":{"communication":0-10,"technical":0-10,"examples":0-10,"structure":0-10,"confidence":0-10,"role_fit":0-10},"strengths":["3 to 4 specific strengths"],"weaknesses":["3 to 4 specific weaknesses"],"communication":"3 sentences on clarity, pace, filler words and English","qa":[{"q":"the question asked","answer":"short summary of what the candidate said","score":0-10,"comment":"1 sentence","better":"what a strong answer includes, 1 or 2 sentences"}],"prepare":[{"topic":"a topic to study","how":"exactly how to prepare, 1 sentence"}],"tomorrow":"one concrete practice task for tomorrow"} Include every main question in qa. Give 4 items in prepare.\n\nInterview transcript:\n'+tr;
-  var j=null;if(agUseClaude()){try{j=agParse(await agModel(p))}catch(e){j=null}}
+  var j=null;if(agUseClaude()){try{j=agParse(await agModel(p,null,{json:1,max:1700}))}catch(e){j=null}}
   if(!j){await new Promise(function(r){setTimeout(r,900)});j=sam?agSamReport():agSonyReport()}
   AG.report=j;AG.view='report';agMemUpdate(j);
   render(false);
@@ -1765,7 +1766,7 @@ document.addEventListener('click',function(e){
   else if(a==='pdf'){agPdf();return}
   else if(a==='again'){AG.view='home';AG.msgs=[];AG.log=[];AG.q=0;AG.report=null}
   else if(a==='hear'){AG.voice=true;agSay(AG.agent==='sam'?"Hey, I'm Sam. Let's have a relaxed chat, and I'll help you sound more natural.":"Good morning. I'm Sony. Let's begin your interview.");return}
-  else if(a==='eng'){AG.engine=k}
+  else if(a==='eng'){AG.engine=k;try{localStorage.setItem('fti-eng',k)}catch(e){}if(k==='dev')agDevLoad()}
   else if(a==='clearmem'){try{localStorage.removeItem(AGK)}catch(x){}}
   else return;
   render(false);
@@ -1810,9 +1811,27 @@ var AGK='fti_agm';
 function agMem(){var m=null;try{m=JSON.parse(localStorage.getItem(AGK)||'null')}catch(e){}m=m||{};m.sam=m.sam||{n:0,mist:{},topics:{},seen:[],facts:[]};m.int=m.int||{n:0,hist:[],weak:{},qseen:[]};return m}
 function agMemSave(m){try{localStorage.setItem(AGK,JSON.stringify(m))}catch(e){}}
 function agMemHtml(){var m=agMem(),s=m.sam,t=m.int,has=s.n||t.n;return '<section class="panel"><h2>What your agents remember</h2><p class="muted sp">'+(has?'Sam: '+s.n+' chats, '+Object.keys(s.mist).length+' recurring mistake types'+(s.facts.length?', '+s.facts.length+' facts about you':'')+'. Sony: '+t.n+' interviews'+(t.hist.length?', last score '+t.hist[t.hist.length-1].score+'/10':'')+'. They use this to personalise the next session.':'Nothing yet. After each session they remember your mistakes, goals and weak areas, and use them next time.')+'</p>'+(has?'<button class="pill" data-ag="clearmem">Clear memory</button>':'')+'</section>'}
-function agEng(){return '<div class="field"><label>Brain</label><p class="muted">Live web search + built-in logic. No AI service is used.</p></div>'}
+var DEV={eng:null,ready:false,loading:false,pct:0,msg:'',err:'',model:'Qwen2.5-1.5B-Instruct-q4f16_1-MLC'};
+function agDevText(){if(DEV.ready)return 'On-device AI is ready. Everything runs privately in this browser.';if(DEV.loading)return 'Downloading the model, '+DEV.pct+'% (first time only, about 1 GB, then it is saved in your browser). '+(DEV.msg&&DEV.pct<100?'':'');if(DEV.err)return DEV.err;return 'Runs the AI inside your browser: private and key-free. First use downloads about 1 GB. Needs desktop Chrome or Edge.'}
+function agDevUI(){var e=document.getElementById('agdevst');if(e)e.textContent=agDevText()}
+function agEng(){var d=AG.engine==='dev';return '<div class="field"><label>Brain</label><div class="chips"><button class="pill'+(d?'':' on')+'" data-ag="eng" data-k="srv">Online brain</button><button class="pill'+(d?' on':'')+'" data-ag="eng" data-k="dev">On-device AI (private)</button></div><p class="muted" id="agdevst">'+agDevText()+'</p></div>'}
+async function agDevLoad(){
+  if(DEV.ready||DEV.loading)return;
+  if(!navigator.gpu){DEV.err='This browser has no WebGPU, so on-device AI cannot run here. Use desktop Chrome or Edge. Switched back to the online brain.';AG.engine='srv';try{localStorage.setItem('fti-eng','srv')}catch(e){}agToast('On-device AI needs desktop Chrome or Edge.');render(false);return}
+  DEV.loading=true;DEV.err='';DEV.pct=0;agDevUI();
+  try{var wl=await import('https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.79/+esm');
+    DEV.eng=await wl.CreateMLCEngine(DEV.model,{initProgressCallback:function(r){DEV.pct=Math.round((r.progress||0)*100);DEV.msg=r.text||'';agDevUI()}});DEV.ready=true;agToast('On-device AI is ready.')}
+  catch(e){DEV.err='Could not load the on-device model ('+((e&&e.message)||'error').slice(0,80)+'). Using the online brain.';AG.engine='srv';try{localStorage.setItem('fti-eng','srv')}catch(x){}agToast('On-device AI failed to load.')}
+  DEV.loading=false;if(AG.view==='setup'||AG.view==='home')render(false);else agDevUI()}
+async function agDevModel(prompt,onText,o){
+  o=o||{};AG_AB=new AbortController();AG_AB.signal.addEventListener('abort',function(){try{DEV.eng.interruptGenerate()}catch(e){}});
+  var req={messages:[{role:'user',content:prompt}],temperature:.8,max_tokens:o.max||300,stream:true};if(o.json)req.response_format={type:'json_object'};
+  var out='',st=await DEV.eng.chat.completions.create(req);
+  for await(var ch of st){if(AG_AB.signal.aborted)throw {code:'aborted'};var d=(ch.choices[0]&&ch.choices[0].delta&&ch.choices[0].delta.content)||'';out+=d;if(onText&&!o.json)onText({text:out})}
+  return out}
+function agStripJ(t){var m=String(t).match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);if(m)return m[1].replace(/\\n/g,' ').replace(/\\"/g,'"');return String(t).replace(/^[\s{]*"?reply"?\s*:\s*"?/i,'').replace(/"?\s*,?\s*"note"[\s\S]*$/,'').replace(/["}\s]+$/,'')}
 var AG_SRV=false;try{if(/^https?:$/.test(location.protocol))fetch('/api/health').then(function(r){return r.json()}).then(function(j){AG_SRV=!!(j&&j.ai)}).catch(function(){})}catch(e){}
-function agUseClaude(){return AG_SRV&&!AG.noClaude}
+function agUseClaude(){if(AG.engine==='dev')return !!DEV.ready&&!AG.noClaude;return AG_SRV&&!AG.noClaude}
 function agEc(s){return s.replace(/\s+(very much|a lot|so much|too|also)$/i,'').trim()}
 function rnd(a){return a[Math.floor(Math.random()*a.length)]}
 function agWc(t){return (String(t).trim().match(/\S+/g)||[]).length}
