@@ -223,6 +223,37 @@ async function grammar(text) {
   return { ok: true, fixes };
 }
 
+/* ---------- AI brain (optional): any ONE free/paid key in the environment turns Sam and Sony into real AI ---------- */
+function aiConf() {
+  const e = process.env;
+  if (e.GEMINI_API_KEY) return { name: 'gemini', key: e.GEMINI_API_KEY, model: e.AI_MODEL || 'gemini-2.0-flash' };
+  if (e.GROQ_API_KEY) return { name: 'groq', key: e.GROQ_API_KEY, model: e.AI_MODEL || 'llama-3.3-70b-versatile', url: e.GROQ_URL || 'https://api.groq.com/openai/v1/chat/completions' };
+  if (e.OPENROUTER_API_KEY) return { name: 'openrouter', key: e.OPENROUTER_API_KEY, model: e.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct:free', url: e.OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions' };
+  if (e.ANTHROPIC_API_KEY) return { name: 'anthropic', key: e.ANTHROPIC_API_KEY, model: e.AI_MODEL || 'claude-haiku-4-5' };
+  return null;
+}
+async function aiChat(prompt) {
+  const c = aiConf(); if (!c) return { error: 'no_key' };
+  prompt = String(prompt || '').slice(0, 30000);
+  let url, headers = { 'content-type': 'application/json' }, body, pick;
+  if (c.name === 'gemini') {
+    url = (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com/v1beta/models/' + c.model + ':generateContent') + '?key=' + encodeURIComponent(c.key);
+    body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.85, maxOutputTokens: 2200 } };
+    pick = j => j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts.map(x => x.text || '').join('');
+  } else if (c.name === 'anthropic') {
+    url = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages'; headers['x-api-key'] = c.key; headers['anthropic-version'] = '2023-06-01';
+    body = { model: c.model, max_tokens: 2200, temperature: 0.85, messages: [{ role: 'user', content: prompt }] };
+    pick = j => j.content && j.content[0] && j.content[0].text;
+  } else {
+    url = c.url; headers.authorization = 'Bearer ' + c.key;
+    body = { model: c.model, messages: [{ role: 'user', content: prompt }], temperature: 0.85, max_tokens: 2200 };
+    pick = j => j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  }
+  const raw = await get(url, 28000, { method: 'POST', body: JSON.stringify(body), headers });
+  let j; try { j = JSON.parse(raw); } catch (e) { return { error: 'provider' }; }
+  const text = pick(j); return text ? { text: String(text) } : { error: 'empty' };
+}
+
 /* ---------- http ---------- */
 const PUB = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
@@ -238,13 +269,17 @@ load();
 const hits = new Map();
 setInterval(() => hits.clear(), 60000).unref();
 function limited(ip) { const n = (hits.get(ip) || 0) + 1; hits.set(ip, n); return n > 40; }
-function body(req) { return new Promise((ok, no) => { let d = ''; req.on('data', c => { d += c; if (d.length > 20000) { req.destroy(); no(new Error('big')); } }); req.on('end', () => ok(d)); req.on('error', no); }); }
+function body(req, max) { max = max || 20000; return new Promise((ok, no) => { let d = ''; req.on('data', c => { d += c; if (d.length > max) { req.destroy(); no(new Error('big')); } }); req.on('end', () => ok(d)); req.on('error', no); }); }
 function json(res, code, o) { const s = JSON.stringify(o); res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(s); }
 
 const server = http.createServer(async (req, res) => {
   const u = req.url.split('?')[0], ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   try {
-    if (u === '/api/health') return json(res, 200, { ok: true, time: new Date().toISOString() });
+    if (u === '/api/health') { const c = aiConf(); return json(res, 200, { ok: true, ai: !!c, provider: c ? c.name : null, time: new Date().toISOString() }); }
+    if (u === '/api/ai' && req.method === 'POST') {
+      if (limited(ip)) return json(res, 429, { error: 'slow down' });
+      const p = JSON.parse((await body(req, 60000)) || '{}'); const r = await aiChat(p.prompt); return json(res, r.text ? 200 : 502, r);
+    }
     if (u === '/api/research' && req.method === 'POST') {
       if (limited(ip)) return json(res, 429, { error: 'slow down' });
       const p = JSON.parse((await body(req)) || '{}'); return json(res, 200, await research(p));
@@ -262,4 +297,4 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { json(res, 500, { error: 'server' }); }
 });
 if (require.main === module) server.listen(PORT, () => console.log('Hunter listening on ' + PORT));
-module.exports = { extractQA, parseDDG, parseBing, research, grammar, cat, server };
+module.exports = { aiChat, aiConf, extractQA, parseDDG, parseBing, research, grammar, cat, server };

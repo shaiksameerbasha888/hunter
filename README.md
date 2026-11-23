@@ -9,3 +9,10 @@ Backend: `server.js` (Node 18+, zero dependencies). Endpoints: `POST /api/resear
 If the web is unreachable within 5 seconds, the agents fall back to the built-in question bank.
 
 Run locally: `npm start`  |  Test: `npm test`  |  Deploy: Render (`render.yaml`).
+
+## Real AI mode (optional)
+Add ONE of these environment variables on Render and Sam and Sony become real AI (replies, follow-ups and reports written by a language model, using the web research as material). Without a key they use the built-in logic.
+- `GEMINI_API_KEY` (free key: aistudio.google.com)
+- `GROQ_API_KEY` (free key: console.groq.com)
+- `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`
+Optional: `AI_MODEL` to override the default model.

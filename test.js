@@ -13,6 +13,7 @@ const mock = http.createServer((req, res) => {
     if (u.pathname === '/qa' || u.pathname === '/chat') { res.setHeader('content-type', 'text/html'); return res.end(u.pathname === '/qa' ? page : chat); }
     if (u.pathname === '/lt') { const text = new URLSearchParams(d).get('text'); const i = text.indexOf('go');
       return res.end(JSON.stringify({ matches: i < 0 ? [] : [{ offset: i, length: 2, message: 'The verb form is wrong.', replacements: [{ value: 'went' }], rule: { id: 'VERB', issueType: 'grammar' } }] })); }
+    if (u.pathname === '/v1chat') return res.end(JSON.stringify({ choices: [{ message: { content: 'Hi, I am Sam.' } }] }));
     res.statusCode = 404; res.end('');
   });
 });
@@ -42,5 +43,10 @@ mock.listen(0, async () => {
   console.log('grammar:', JSON.stringify(g));
   assert(g.ok && g.fixes[0].better === 'Yesterday I went to college.');
   const g2 = await s.grammar('I went home.'); assert(g2.ok && !g2.fixes.length);
+  // AI brain through a mock OpenAI-compatible provider
+  process.env.GROQ_API_KEY = 'k'; process.env.GROQ_URL = `http://127.0.0.1:${port}/v1chat`;
+  assert(s.aiConf().name === 'groq');
+  const a = await s.aiChat('hello'); console.log('ai:', JSON.stringify(a)); assert(a.text === 'Hi, I am Sam.');
+  delete process.env.GROQ_API_KEY; assert((await s.aiChat('x')).error === 'no_key');
   console.log('ALL TESTS PASSED'); process.exit(0);
 });

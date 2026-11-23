@@ -1662,31 +1662,32 @@ if(window.speechSynthesis)speechSynthesis.onvoiceschanged=function(){agVoiceUI()
 document.addEventListener('pointermove',function(e){if(e.pointerType==='touch'){return}var el=e.target.closest&&e.target.closest('.panel,.ag-card,.hcard,.stat');if(!el||el.closest('.ag-chat')||el.offsetHeight>460){off();return}if(cur&&cur!==el)off();cur=el;var r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.classList.add('tilt');el.style.transform='perspective(1000px) rotateX('+(-y*5).toFixed(2)+'deg) rotateY('+(x*6).toFixed(2)+'deg) translateY(-2px)';el.style.setProperty('--gx',((x+.5)*100).toFixed(0)+'%');el.style.setProperty('--gy',((y+.5)*100).toFixed(0)+'%')});
 document.addEventListener('pointerleave',off,true);window.addEventListener('blur',off)})();
 
-function agErr(e){var c=e&&e.code;return c==='none'?'The agent needs Claude access. Open this page from claude.ai and allow it when asked.':c==='not_granted'?'Permission was declined. Reload the page and allow it to use Claude.':c==='rate_limited'?'Too many requests. Wait a minute, then press Send again.':c==='aborted'||c==='abort'?'':'Something went wrong. Please press Send again.'}
+function agErr(e){var c=e&&e.code;return c==='none'?'The AI brain is not connected.':c==='rate_limited'?'Too many requests. Wait a minute, then press Send again.':c==='aborted'||c==='abort'?'':'Something went wrong. Please press Send again.'}
 async function agModel(prompt,onText){
-  if(!AG_S){try{AG_S=window.claude&&await window.claude.use('sample')}catch(e){AG_S=null}}
-  if(!AG_S)throw {code:'none'};
-  AG_AB=new AbortController();var o={cache:false,signal:AG_AB.signal};if(onText)o.onText=onText;
-  var r=await AG_S([{role:'user',content:prompt}],o);return r.text||'';
+  if(!AG_SRV)throw {code:'none'};
+  AG_AB=new AbortController();var tm=setTimeout(function(){try{AG_AB.abort()}catch(e){}},32000);
+  try{var r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json'},signal:AG_AB.signal,body:JSON.stringify({prompt:prompt})}),j=await r.json();
+    if(!r.ok||!j.text)throw {code:'fail'};if(onText)onText({text:j.text});return j.text}finally{clearTimeout(tm)}
 }
 function agSys0(){
   if(AG.agent==='sam')return 'You are Sam, a friendly, patient native English speaker having a relaxed everyday chat with '+agNm()+', an Indian learner who wants to improve spoken English for job interviews. Topic: '+AG.topic+'. Keep the chat natural, warm and encouraging, like a good friend, never like a teacher or a test. Reply in 2 to 4 short spoken-style sentences, then ask ONE easy follow-up question. If his last message has a grammar, vocabulary or phrasing mistake, put a brief correction in note, otherwise note is null. Do not correct tiny speech-recognition slips or missing punctuation. Respond with ONLY one JSON object: {"reply":"your reply ending with the follow-up question","note":null or {"said":"his exact words that were wrong","better":"the more natural way to say it","why":"at most 10 words"}}';
   return 'You are Sony, a strict, professional hiring manager running a realistic job interview with '+agNm()+', a fresher. Role: '+(AG.role||'Data Analyst (fresher)')+'. '+(AG.jd?'Job description:\n'+AG.jd.slice(0,3500)+'\nBase your questions on the skills and duties in this description and test whether the candidate fits it. ':'No job description was given, so run a normal data analyst fresher interview (introduction, project, SQL, Power BI or Excel, Python, a business case, behavioral). ')+'Plan about '+AG.max+' questions. Rules: ask ONE question at a time and wait for the answer. Do NOT give feedback, praise or hints after answers; at most say Okay or Thank you. If an answer is vague, generic, too short or has no example, ask a sharp follow-up about it before moving on. Stay serious and professional. Speak in short natural sentences, no lists, no markdown. The answers come from speech recognition, so ignore small transcription slips.';
 }
-function agSys(){return agSys0()+agBrainCtx()}
+function agWebCtx(){var w=(AG.web||[]).slice(0,8);if(!w.length)return '';return '\n\nFresh material researched from the web today ('+(AG.webSrc||[]).slice(0,3).join(', ')+'). Use these as inspiration, adapt the wording, never read them like a list, and do not repeat a question already asked: '+w.map(function(x){return '"'+x.q+'"'+(AG.agent==='int'&&x.a?' [strong answer: '+x.a.slice(0,200)+']':'')}).join(' ')}
+function agSys(){return agSys0()+agWebCtx()+agBrainCtx()}
 function agTranscript(){var n=agNm(),w=AG.agent==='sam'?'Sam':'Interviewer';return AG.msgs.map(function(m){return (m.r==='me'?n:w)+': '+m.t}).join('\n')}
 async function agTurn(first){
   if(first)agInit();if(!agUseClaude())return agLocalTurn(first);
-  AG.busy=true;AG.err='';agPaint();var sam=AG.agent==='sam',ai={r:'ai',t:'',note:null};
+  AG.busy=true;AG.err='';agPaint();if(first)await agResearch();var sam=AG.agent==='sam',ai={r:'ai',t:'',note:null};
   try{
     var hint=first?'Begin now: greet briefly'+(sam?'':', say your name and the role')+' and ask your first question.':(sam?'Reply to his last message now.':(AG.q>=AG.max?'The candidate has now answered all planned questions. Close the interview politely in one short sentence and end your message with [END].':'Question count so far: '+AG.q+' of '+AG.max+'. Ask the next question or a follow-up now.'));
     var prompt=agSys()+'\n\nConversation so far:\n'+(AG.msgs.length?agTranscript():'(none yet)')+'\n\n'+hint;
     var txt;
-    if(sam){txt=await agModel(prompt);var j=agParse(txt);ai.t=(j&&j.reply)||txt;ai.note=j&&j.note&&j.note.said?j.note:null}
+    if(sam){txt=await agModel(prompt);var j=agParse(txt);ai.t=(j&&j.reply)||txt;ai.fix=j&&j.note&&j.note.said?j.note:null;ai.note=null}
     else{AG.msgs.push(ai);txt=await agModel(prompt,function(x){ai.t=x.text.replace('[END]','');agPaint()});ai.t=txt.replace('[END]','').trim()}
     if(sam)AG.msgs.push(ai);
     AG.busy=false;agPaint();agSay(ai.t);
-    if(sam&&!first){var u=AG.msgs[AG.msgs.length-2];if(u)AG.log.push({you:u.t,fix:ai.note})}
+    if(sam&&!first){var u=AG.msgs[AG.msgs.length-2];if(u)AG.log.push({you:u.t,fix:ai.fix||null})}
     if(!sam&&/\[END\]/.test(txt)){AG.busy=false;agFinish();return}
   }catch(e){AG.busy=false;if(!sam&&AG.msgs[AG.msgs.length-1]===ai&&!ai.t)AG.msgs.pop();if(e&&e.code!=='aborted'&&e.code!=='abort'){AG.noClaude=true;return agLocalTurn(first)}AG.err=agErr(e);agPaint()}
 }
@@ -1810,7 +1811,8 @@ function agMem(){var m=null;try{m=JSON.parse(localStorage.getItem(AGK)||'null')}
 function agMemSave(m){try{localStorage.setItem(AGK,JSON.stringify(m))}catch(e){}}
 function agMemHtml(){var m=agMem(),s=m.sam,t=m.int,has=s.n||t.n;return '<section class="panel"><h2>What your agents remember</h2><p class="muted sp">'+(has?'Sam: '+s.n+' chats, '+Object.keys(s.mist).length+' recurring mistake types'+(s.facts.length?', '+s.facts.length+' facts about you':'')+'. Sony: '+t.n+' interviews'+(t.hist.length?', last score '+t.hist[t.hist.length-1].score+'/10':'')+'. They use this to personalise the next session.':'Nothing yet. After each session they remember your mistakes, goals and weak areas, and use them next time.')+'</p>'+(has?'<button class="pill" data-ag="clearmem">Clear memory</button>':'')+'</section>'}
 function agEng(){return '<div class="field"><label>Brain</label><p class="muted">Live web search + built-in logic. No AI service is used.</p></div>'}
-function agUseClaude(){return false&&AG.engine!=='local'&&!AG.noClaude&&!!(window.claude&&window.claude.use)}
+var AG_SRV=false;try{if(/^https?:$/.test(location.protocol))fetch('/api/health').then(function(r){return r.json()}).then(function(j){AG_SRV=!!(j&&j.ai)}).catch(function(){})}catch(e){}
+function agUseClaude(){return AG_SRV&&!AG.noClaude}
 function agEc(s){return s.replace(/\s+(very much|a lot|so much|too|also)$/i,'').trim()}
 function rnd(a){return a[Math.floor(Math.random()*a.length)]}
 function agWc(t){return (String(t).trim().match(/\S+/g)||[]).length}
@@ -2103,5 +2105,22 @@ html nav.tabs button{border-radius:999px}
 html nav.tabs button.on{background:var(--pk);color:var(--pk-ink)}
 html nav.tabs button.on::before{display:none}
 @media (min-width:900px){html nav.tabs button{border-radius:999px}}
+
+/* ===== Slide-out menu: hidden until the three-line button is pressed ===== */
+html body{padding-left:0!important}
+html nav.tabs{width:250px!important;padding:68px 12px 16px!important;transform:translateX(-104%);transition:transform .28s cubic-bezier(.2,.8,.2,1);z-index:60}
+html nav.tabs.open{transform:none;box-shadow:0 0 70px rgba(30,40,40,.3)}
+html nav.tabs button{flex-direction:row;justify-content:flex-start;gap:12px;min-height:44px;padding:0 14px;font:600 14px/1 var(--body);text-align:left}
+html nav.tabs button .ic svg{width:20px;height:20px}
+html .wrap{padding-top:68px!important}
+.navbtn{position:fixed;top:12px;left:12px;z-index:70;width:46px;height:46px;border-radius:15px;border:1px solid var(--line);background:var(--navbg);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--sh);padding:0}
+.navbtn i{display:block;width:20px;height:2px;border-radius:2px;background:var(--ink);transition:transform .25s,opacity .2s}
+.navbtn.open i:nth-child(1){transform:translateY(7px) rotate(45deg)}.navbtn.open i:nth-child(2){opacity:0}.navbtn.open i:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+#navscrim{position:fixed;inset:0;background:rgba(30,40,40,.38);opacity:0;pointer-events:none;transition:opacity .25s;z-index:55}#navscrim.open{opacity:1;pointer-events:auto}
 </style>
+<script>
+(function(){var nav=document.querySelector('nav.tabs'),b=document.createElement('button'),sc=document.createElement('div');if(!nav)return;b.className='navbtn';b.setAttribute('aria-label','Menu');b.setAttribute('aria-expanded','false');b.innerHTML='<i></i><i></i><i></i>';sc.id='navscrim';document.body.appendChild(sc);document.body.appendChild(b);
+function set(o){nav.classList.toggle('open',o);b.classList.toggle('open',o);sc.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false')}
+b.onclick=function(){set(!nav.classList.contains('open'))};sc.onclick=function(){set(false)};nav.addEventListener('click',function(e){if(e.target.closest('button'))setTimeout(function(){set(false)},120)});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false)})})();
+</script>
 </body></html>
