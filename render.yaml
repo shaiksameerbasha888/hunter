@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: hunter
+    runtime: node
+    plan: free
+    buildCommand: "echo no build needed"
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    autoDeploy: true

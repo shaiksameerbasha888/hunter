@@ -1,0 +1,9 @@
+{
+  "name": "hunter",
+  "version": "1.0.0",
+  "description": "Fajr to Isha: life and study tracker with web-researching Sam (English) and Sony (interview) agents",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
