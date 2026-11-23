@@ -1687,10 +1687,10 @@ async function agTurn(first){
     if(sam){txt=await agModel(prompt,null,{json:1,max:380});var j=agParse(txt);ai.t=(j&&j.reply)||agStripJ(txt);ai.fix=j&&j.note&&j.note.said?j.note:null;ai.note=null}
     else{AG.msgs.push(ai);txt=await agModel(prompt,function(x){ai.t=x.text.replace('[END]','');agPaint()},{max:260});ai.t=txt.replace('[END]','').trim()}
     if(sam)AG.msgs.push(ai);
-    AG.busy=false;agPaint();agSay(ai.t);
+    AG.busy=false;AG.brain='ai';if(first)agToast('Brain: real AI is answering.');agPaint();agSay(ai.t);
     if(sam&&!first){var u=AG.msgs[AG.msgs.length-2];if(u)AG.log.push({you:u.t,fix:ai.fix||null})}
     if(!sam&&/\[END\]/.test(txt)){AG.busy=false;agFinish();return}
-  }catch(e){AG.busy=false;if(!sam&&AG.msgs[AG.msgs.length-1]===ai&&!ai.t)AG.msgs.pop();if(e&&e.code!=='aborted'&&e.code!=='abort'){AG.noClaude=true;return agLocalTurn(first)}AG.err=agErr(e);agPaint()}
+  }catch(e){AG.busy=false;if(!sam&&AG.msgs[AG.msgs.length-1]===ai&&!ai.t)AG.msgs.pop();if(e&&e.code!=='aborted'&&e.code!=='abort'){AG.noClaude=true;agToast('The AI did not respond, so the built-in brain is answering.');return agLocalTurn(first)}AG.err=agErr(e);agPaint()}
 }
 function agStopMic(){AG.mute=true;AG.base='';try{if(AG_R){var r=AG_R;AG_R=null;r.onresult=null;r.abort()}}catch(e){}try{if(AG_D)AG_D.stop()}catch(e){}var mc=document.getElementById('agmic');if(mc)mc.classList.remove('on');var h=document.querySelector('.ag-head');if(h)h.classList.remove('listen')}
 function agSend(){
@@ -2014,10 +2014,10 @@ function agLocalSony(first){
     return {t:'Good morning, '+nm+'. I am Sony, the hiring manager for the '+(AG.role||'Data Analyst')+' position. We will go through about '+AG.max+' questions. Answer clearly and give examples. '+q0.q}}
   var rec=L.rec[L.rec.length-1],t=AG.msgs[AG.msgs.length-1].t;
   if(L.fu){rec.a+=' '+t;L.fu=0}else{rec.a=t;var q=L.cur,words=agWc(t),cov=agCov(t,q.k),need=null;
-    if(L.fuN<3&&q.c!=='close'){if(words<22)need=rnd(['That was brief. Walk me through it in more detail.','Too short. Explain it step by step.']);else if(['sql','pbi','py','stat','excel','tech'].indexOf(q.c)>=0&&cov<.25)need=q.f||'Be more specific. What exactly do you mean?';else if(['proj','beh','case'].indexOf(q.c)>=0&&!agEx(t))need='Give me a specific example from your own work, with a number if you can.'}
-    if(need){L.fu=1;L.fuN++;return {t:rnd(ACK0)+' '+need}}}
+    L.usedFu=L.usedFu||[];if(L.fuN<2&&q.c!=='close'){if(words<22)need=rnd(['That was brief. Walk me through it in more detail.','Too short. Explain it step by step.']);else if(['sql','pbi','py','stat','excel','tech'].indexOf(q.c)>=0&&cov<.25)need=(L.fuN===0?q.f:null)||rnd(['Be more specific. Which exact steps or tools would you use?','Walk me through it with a small example.','What would you do first, and why?']);else if(['proj','beh','case'].indexOf(q.c)>=0&&!agEx(t))need='Give me a specific example from your own work, with a number if you can.'}
+    if(need&&L.usedFu.indexOf(need)<0){L.usedFu.push(need);L.fu=1;L.fuN++;return {t:rnd(ACK0)+' '+need}}}
   if(AG.pi>=AG.plan.length){AG.q=AG.max;return {t:'Thank you, '+nm+'. That concludes the interview. We will review everything and get back to you. [END]'}}
-  var nq=AG.plan[AG.pi++];L.cur=nq;L.rec.push({id:nq.id,q:nq.q,c:nq.c,a:''});AG.q=AG.pi-1;return {t:rnd(ACK)+' '+nq.q}
+  var nq=AG.plan[AG.pi++];L.cur=nq;L.fuN=0;L.rec.push({id:nq.id,q:nq.q,c:nq.c,a:''});AG.q=AG.pi-1;return {t:rnd(ACK)+' '+nq.q}
 }
 
 /* ---- Web research layer: the agents search the internet themselves (server: /api/research, /api/grammar) ---- */

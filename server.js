@@ -280,9 +280,10 @@ const server = http.createServer(async (req, res) => {
   const u = req.url.split('?')[0], ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   try {
     if (u === '/api/health') { const c = aiConf(); return json(res, 200, { ok: true, ai: !!c, provider: c ? c.name : null, time: new Date().toISOString() }); }
+    if (u === '/api/ai-test') { const c = aiConf(), t0 = Date.now(), r = await aiChat('Reply with exactly: Hello from the AI.'); return json(res, 200, { provider: c ? c.name : null, ok: !!r.text, sample: r.text ? r.text.slice(0, 80) : null, error: r.error || null, ms: Date.now() - t0 }); }
     if (u === '/api/ai' && req.method === 'POST') {
       if (limited(ip)) return json(res, 429, { error: 'slow down' });
-      const p = JSON.parse((await body(req, 60000)) || '{}'); const r = await aiChat(p.prompt); return json(res, r.text ? 200 : 502, r);
+      const p = JSON.parse((await body(req, 60000)) || '{}'); const t0 = Date.now(), r = await aiChat(p.prompt); console.log('ai', (aiConf() || {}).name || 'off', r.text ? 'ok' : 'FAIL ' + r.error, (Date.now() - t0) + 'ms'); return json(res, r.text ? 200 : 502, r);
     }
     if (u === '/api/research' && req.method === 'POST') {
       if (limited(ip)) return json(res, 429, { error: 'slow down' });
