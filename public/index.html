@@ -1674,6 +1674,7 @@ function agSys0(){
   if(AG.agent==='sam')return 'You are Sam, a friendly, patient native English speaker having a relaxed everyday chat with '+agNm()+', an Indian learner who wants to improve spoken English for job interviews. Topic: '+AG.topic+'. Keep the chat natural, warm and encouraging, like a good friend, never like a teacher or a test. Reply in 2 to 4 short spoken-style sentences, then ask ONE easy follow-up question. If his last message has a grammar, vocabulary or phrasing mistake, put a brief correction in note, otherwise note is null. Do not correct tiny speech-recognition slips or missing punctuation. Respond with ONLY one JSON object: {"reply":"your reply ending with the follow-up question","note":null or {"said":"his exact words that were wrong","better":"the more natural way to say it","why":"at most 10 words"}}';
   return 'You are Sony, a strict, professional hiring manager running a realistic job interview with '+agNm()+', a fresher. Role: '+(AG.role||'Data Analyst (fresher)')+'. '+(AG.jd?'Job description:\n'+AG.jd.slice(0,3500)+'\nBase your questions on the skills and duties in this description and test whether the candidate fits it. ':'No job description was given, so run a normal data analyst fresher interview (introduction, project, SQL, Power BI or Excel, Python, a business case, behavioral). ')+'Plan about '+AG.max+' questions. Rules: ask ONE question at a time and wait for the answer. Do NOT give feedback, praise or hints after answers; at most say Okay or Thank you. If an answer is vague, generic, too short or has no example, ask a sharp follow-up about it before moving on. Stay serious and professional. Speak in short natural sentences, no lists, no markdown. The answers come from speech recognition, so ignore small transcription slips.';
 }
+function agSeenQ(q){var w=[];String(q).toLowerCase().replace(/[^a-z ]/g,' ').split(/\s+/).forEach(function(x){if(x.length>3&&w.indexOf(x)<0)w.push(x)});if(!w.length)return false;var need=Math.max(3,Math.ceil(w.length*.45));return AG.msgs.some(function(m){if(m.r!=='ai')return false;var t=' '+m.t.toLowerCase().replace(/[^a-z ]/g,' ')+' ',n=0;w.forEach(function(x){if(t.indexOf(' '+x+' ')>=0)n++});return n>=need})}
 function agWebCtx(){var w=(AG.web||[]).slice(0,8);if(!w.length)return '';return '\n\nFresh material researched from the web today ('+(AG.webSrc||[]).slice(0,3).join(', ')+'). Use these as inspiration, adapt the wording, never read them like a list, and do not repeat a question already asked: '+w.map(function(x){return '"'+x.q+'"'+(AG.agent==='int'&&x.a?' [strong answer: '+x.a.slice(0,200)+']':'')}).join(' ')}
 function agSys(){return agSys0()+agWebCtx()+agBrainCtx()}
 function agTranscript(){var n=agNm(),w=AG.agent==='sam'?'Sam':'Interviewer';return AG.msgs.map(function(m){return (m.r==='me'?n:w)+': '+m.t}).join('\n')}
@@ -1682,7 +1683,7 @@ async function agTurn(first){
   AG.busy=true;AG.err='';agPaint();if(first)await agResearch();var sam=AG.agent==='sam',ai={r:'ai',t:'',note:null};
   try{
     var hint=first?'Begin now: greet briefly'+(sam?'':', say your name and the role')+' and ask your first question.':(sam?'Reply to his last message now.':(AG.q>=AG.max?'The candidate has now answered all planned questions. Close the interview politely in one short sentence and end your message with [END].':'Question count so far: '+AG.q+' of '+AG.max+'. Ask the next question or a follow-up now.'));
-    var prompt=agSys()+'\n\nConversation so far:\n'+(AG.msgs.length?agTranscript():'(none yet)')+'\n\n'+hint;
+    var prompt=agSys()+'\n\nConversation so far:\n'+(AG.msgs.length?agTranscript():'(none yet)')+'\n\n'+hint+' Never repeat or reword any question already asked in the conversation above; always move the conversation forward and react to what he just said.';
     var txt;
     if(sam){txt=await agModel(prompt,null,{json:1,max:380});var j=agParse(txt);ai.t=(j&&j.reply)||agStripJ(txt);ai.fix=j&&j.note&&j.note.said?j.note:null;ai.note=null}
     else{AG.msgs.push(ai);txt=await agModel(prompt,function(x){ai.t=x.text.replace('[END]','');agPaint()},{max:260});ai.t=txt.replace('[END]','').trim()}
@@ -1996,7 +1997,7 @@ function smMe(t,q){var l=(t+' '+(q||'')).toLowerCase();if(/how are you/.test(l))
   return rnd(["Good question! I'm an AI, so my answer is a bit different from yours, but I'm happy to share my thoughts any time.","I think it depends on the person. For me, a good conversation is the best part."])}
 function agLocalSam(first){
   var L=AG.L,m=agMem().sam,nm=agNm(),key=TPK[AG.topic]||'free',pool=function(){return key==='free'?SB.all:SB[key]};
-  var ask=function(){L.sf=0;var q,wq=(AG.web||[]).filter(function(x){return L.asked.indexOf(x.q)<0});if(wq.length&&Math.random()<.7){var wx=rnd(wq);L.asked.push(wx.q);AG.webUsed.push(wx);agSeenAdd('sam',wx.id);q=wx.q}else{var p=pool().filter(function(q){return L.asked.indexOf(q)<0});if(!p.length){L.asked=[];p=pool()}q=rnd(p);L.asked.push(q)}L.lastQ=q;return q};
+  var ask=function(){L.sf=0;var q,wq=(AG.web||[]).filter(function(x){return L.asked.indexOf(x.q)<0&&!agSeenQ(x.q)});if(wq.length&&Math.random()<.7){var wx=rnd(wq);L.asked.push(wx.q);AG.webUsed.push(wx);agSeenAdd('sam',wx.id);q=wx.q}else{var p=pool().filter(function(q){return L.asked.indexOf(q)<0&&!agSeenQ(q)});if(!p.length){L.asked=[];p=pool()}q=rnd(p);L.asked.push(q)}L.lastQ=q;return q};
   if(first){var mc=m.facts.length&&Math.random()<.7?' Last time you told me '+rnd(m.facts)+'.':'';return {t:rnd(['Hey '+nm+'! Good to hear from you.','Hi '+nm+', nice to see you again.','Hello '+nm+'! Ready for a relaxed chat?'])+mc+' '+ask()}}
   var t=AG.msgs[AG.msgs.length-1].t,fix=AG._wf===undefined?agFix(t):(AG._wf||null),cx=smRead(fix&&fix.better&&agWc(fix.better)<40?fix.better:t,L.lastQ||''),out;
   cx.words=agWc(t);
@@ -2010,14 +2011,15 @@ function agLocalSam(first){
 }
 function agLocalSony(first){
   var nm=agNm(),L=AG.L;
-  if(first||!L.cur){var q0=AG.plan[0];AG.pi=1;L.cur=q0;L.rec=[{id:q0.id,q:q0.q,c:q0.c,a:''}];L.fu=0;L.fuN=0;
+  if(!first&&!L.cur){var la=AG.msgs.filter(function(m){return m.r==='ai'}).slice(-1)[0];L.cur={id:'ai',q:la?la.t:'',c:'proj',k:[],f:''};L.rec=[{id:'ai',q:L.cur.q,c:'proj',a:''}];L.fu=0;L.fuN=2;L.usedFu=[];AG.pi=AG.pi||0}
+  if(first){var q0=AG.plan[0];AG.pi=1;L.cur=q0;L.rec=[{id:q0.id,q:q0.q,c:q0.c,a:''}];L.fu=0;L.fuN=0;
     return {t:'Good morning, '+nm+'. I am Sony, the hiring manager for the '+(AG.role||'Data Analyst')+' position. We will go through about '+AG.max+' questions. Answer clearly and give examples. '+q0.q}}
   var rec=L.rec[L.rec.length-1],t=AG.msgs[AG.msgs.length-1].t;
   if(L.fu){rec.a+=' '+t;L.fu=0}else{rec.a=t;var q=L.cur,words=agWc(t),cov=agCov(t,q.k),need=null;
     L.usedFu=L.usedFu||[];if(L.fuN<2&&q.c!=='close'){if(words<22)need=rnd(['That was brief. Walk me through it in more detail.','Too short. Explain it step by step.']);else if(['sql','pbi','py','stat','excel','tech'].indexOf(q.c)>=0&&cov<.25)need=(L.fuN===0?q.f:null)||rnd(['Be more specific. Which exact steps or tools would you use?','Walk me through it with a small example.','What would you do first, and why?']);else if(['proj','beh','case'].indexOf(q.c)>=0&&!agEx(t))need='Give me a specific example from your own work, with a number if you can.'}
     if(need&&L.usedFu.indexOf(need)<0){L.usedFu.push(need);L.fu=1;L.fuN++;return {t:rnd(ACK0)+' '+need}}}
   if(AG.pi>=AG.plan.length){AG.q=AG.max;return {t:'Thank you, '+nm+'. That concludes the interview. We will review everything and get back to you. [END]'}}
-  var nq=AG.plan[AG.pi++];L.cur=nq;L.fuN=0;L.rec.push({id:nq.id,q:nq.q,c:nq.c,a:''});AG.q=AG.pi-1;return {t:rnd(ACK)+' '+nq.q}
+  var nq=AG.plan[AG.pi++];while(nq&&agSeenQ(nq.q)&&AG.pi<AG.plan.length)nq=AG.plan[AG.pi++];L.cur=nq;L.fuN=0;L.rec.push({id:nq.id,q:nq.q,c:nq.c,a:''});AG.q=AG.pi-1;return {t:rnd(ACK)+' '+nq.q}
 }
 
 /* ---- Web research layer: the agents search the internet themselves (server: /api/research, /api/grammar) ---- */

@@ -251,10 +251,12 @@ async function aiChat(prompt) {
     body = { model: c.model, messages: [{ role: 'user', content: prompt }], temperature: 0.85, max_tokens: 2200 };
     pick = j => j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
   }
-  const raw = await get(url, c.name === 'free' ? 15000 : 28000, { method: 'POST', body: JSON.stringify(body), headers });
-  let j; try { j = JSON.parse(raw); } catch (e) { if (c.name === 'free' && ++freeFails >= 2) { freeOffUntil = Date.now() + 5 * 60000; freeFails = 0; } return { error: 'provider' }; }
+  const call = () => get(url, c.name === 'free' ? 15000 : 28000, { method: 'POST', body: JSON.stringify(body), headers });
+  let raw = await call();
+  if (!raw && c.name === 'free') { await sleep(3000); raw = await call(); }
+  let j; try { j = JSON.parse(raw); } catch (e) { if (c.name === 'free' && ++freeFails >= 3) { freeOffUntil = Date.now() + 2 * 60000; freeFails = 0; } return { error: 'provider' }; }
   const text = pick(j);
-  if (c.name === 'free') { if (text) freeFails = 0; else if (++freeFails >= 2) { freeOffUntil = Date.now() + 5 * 60000; freeFails = 0; } }
+  if (c.name === 'free') { if (text) freeFails = 0; else if (++freeFails >= 3) { freeOffUntil = Date.now() + 2 * 60000; freeFails = 0; } }
   return text ? { text: String(text) } : { error: 'empty' };
 }
 
