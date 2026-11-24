@@ -233,13 +233,13 @@ function aiConf() {
   if (Date.now() < freeOffUntil) return null;
   return { name: 'free', key: '', model: e.FREE_AI_MODEL || 'openai', url: e.POLL_URL || 'https://text.pollinations.ai/openai' };
 }
-let freeFails = 0, freeOffUntil = 0;
+let freeFails = 0, freeOffUntil = 0, lastAiError = null;
 async function aiChat(prompt) {
   const c = aiConf(); if (!c) return { error: 'no_key' };
   prompt = String(prompt || '').slice(0, 30000);
   let url, headers = { 'content-type': 'application/json' }, body, pick;
   if (c.name === 'gemini') {
-    url = (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com/v1beta/models/' + c.model + ':generateContent') + '?key=' + encodeURIComponent(c.key);
+    url = process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com/v1beta/models/' + c.model + ':generateContent'; headers['x-goog-api-key'] = c.key;
     body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.85, maxOutputTokens: 2200 } };
     pick = j => j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts.map(x => x.text || '').join('');
   } else if (c.name === 'anthropic') {
@@ -251,7 +251,12 @@ async function aiChat(prompt) {
     body = { model: c.model, messages: [{ role: 'user', content: prompt }], temperature: 0.85, max_tokens: 2200 };
     pick = j => j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
   }
-  const call = () => get(url, c.name === 'free' ? 15000 : 28000, { method: 'POST', body: JSON.stringify(body), headers });
+  const post = async (u) => {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), c.name === 'free' ? 15000 : 28000);
+    try { const r = await fetch(u, { method: 'POST', body: JSON.stringify(body), headers, signal: ac.signal }); const tx = (await r.text()).slice(0, 200000); if (!r.ok) { lastAiError = { provider: c.name, status: r.status, body: tx.slice(0, 300) }; return ''; } lastAiError = null; return tx; }
+    catch (e) { lastAiError = { provider: c.name, status: 0, body: String(e && e.message).slice(0, 120) }; return ''; } finally { clearTimeout(t); }
+  };
+  const call = async () => { let r = await post(url); if (!r && c.name === 'gemini' && lastAiError && (lastAiError.status === 401 || lastAiError.status === 403)) { delete headers['x-goog-api-key']; r = await post(url + '?key=' + encodeURIComponent(c.key)); headers['x-goog-api-key'] = c.key; } return r; };
   let raw = await call();
   if (!raw && c.name === 'free') { await sleep(3000); raw = await call(); }
   let j; try { j = JSON.parse(raw); } catch (e) { if (c.name === 'free' && ++freeFails >= 3) { freeOffUntil = Date.now() + 2 * 60000; freeFails = 0; } return { error: 'provider' }; }
@@ -282,10 +287,10 @@ const server = http.createServer(async (req, res) => {
   const u = req.url.split('?')[0], ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   try {
     if (u === '/api/health') { const c = aiConf(); return json(res, 200, { ok: true, ai: !!c, provider: c ? c.name : null, time: new Date().toISOString() }); }
-    if (u === '/api/ai-test') { const c = aiConf(), t0 = Date.now(), r = await aiChat('Reply with exactly: Hello from the AI.'); return json(res, 200, { provider: c ? c.name : null, ok: !!r.text, sample: r.text ? r.text.slice(0, 80) : null, error: r.error || null, ms: Date.now() - t0 }); }
+    if (u === '/api/ai-test') { const c = aiConf(), t0 = Date.now(), r = await aiChat('Reply with exactly: Hello from the AI.'); return json(res, 200, { provider: c ? c.name : null, ok: !!r.text, sample: r.text ? r.text.slice(0, 80) : null, error: r.error || null, detail: lastAiError, ms: Date.now() - t0 }); }
     if (u === '/api/ai' && req.method === 'POST') {
       if (limited(ip)) return json(res, 429, { error: 'slow down' });
-      const p = JSON.parse((await body(req, 60000)) || '{}'); const t0 = Date.now(), r = await aiChat(p.prompt); console.log('ai', (aiConf() || {}).name || 'off', r.text ? 'ok' : 'FAIL ' + r.error, (Date.now() - t0) + 'ms'); return json(res, r.text ? 200 : 502, r);
+      const p = JSON.parse((await body(req, 60000)) || '{}'); const t0 = Date.now(), r = await aiChat(p.prompt); console.log('ai', (aiConf() || {}).name || 'off', r.text ? 'ok' : 'FAIL ' + r.error + ' ' + JSON.stringify(lastAiError), (Date.now() - t0) + 'ms'); return json(res, r.text ? 200 : 502, r);
     }
     if (u === '/api/research' && req.method === 'POST') {
       if (limited(ip)) return json(res, 429, { error: 'slow down' });
